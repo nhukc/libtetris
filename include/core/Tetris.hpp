@@ -10,9 +10,9 @@
 namespace tetris {
 
 enum Tile { I, S, Z, O, J, L, T, Empty, X };
-enum Rotation { Clockwise, CounterClockwise, OneEighty };
+enum Rotation { Clockwise, CounterClockwise };
 
-class Action;
+class Mino;
 
 // Efficiently small tetris board
 struct Board {
@@ -47,9 +47,17 @@ struct Board {
 };
 
 std::ostream &operator<<(std::ostream &os, const Board &b);
+    
+// Struct returned when attempting to rotate a mino
+struct RotationContext {
+    // If rotation was possible
+    bool rotated;
+    // If we required a kick to rotate
+    bool kicked;
+};
 
 // Represents the action of placing one mino to the board
-class Action {
+class Mino {
     protected:
 
     // size of bounding box
@@ -89,14 +97,7 @@ class Action {
     // used to compute kicks
     int orientation_ = 0;
 
-    struct RotationContext {
-        // If rotation was possible
-        bool rotated;
-        // If we required a kick to rotate
-        bool kicked;
-    };
-
-    Action(Board& board) : board_(board) {
+    Mino(Board& board) : board_(board) {
         // TODO: Determine where pieces should spawn
     };
     
@@ -132,11 +133,11 @@ class Action {
     std::string to_string() const; 
 };
 
-std::ostream &operator<<(std::ostream &os, const Action &b);
+std::ostream &operator<<(std::ostream &os, const Mino &b);
 
-class OAction : public Action {
+class OMino : public Mino {
     public:
-    OAction(Board& board) : Action(board) {
+    OMino(Board& board) : Mino(board) {
         x = 4;
         y = board_.height-1;
 
@@ -163,9 +164,9 @@ class OAction : public Action {
     virtual Tile GetTile() { return Tile::O; }
 };
 
-class LAction : public Action {
+class LMino : public Mino {
     public:
-    LAction(Board& board) : Action(board) {
+    LMino(Board& board) : Mino(board) {
         x = 3;
         y = board_.height-1;
 
@@ -208,9 +209,9 @@ class LAction : public Action {
     virtual Tile GetTile() { return Tile::L; }
 };
 
-class JAction : public Action {
+class JMino : public Mino {
     public:
-    JAction(Board& board) : Action(board) {
+    JMino(Board& board) : Mino(board) {
         x = 3;
         y = board_.height-1;
 
@@ -253,9 +254,9 @@ class JAction : public Action {
     virtual Tile GetTile() { return Tile::J; }
 };
 
-class SAction : public Action {
+class SMino : public Mino {
     public:
-    SAction(Board& board) : Action(board) {
+    SMino(Board& board) : Mino(board) {
         x = 3;
         y = board_.height-1;
 
@@ -298,9 +299,9 @@ class SAction : public Action {
     virtual Tile GetTile() { return Tile::S; }
 };
 
-class ZAction : public Action {
+class ZMino : public Mino {
     public:
-    ZAction(Board& board) : Action(board) {
+    ZMino(Board& board) : Mino(board) {
         x = 3;
         y = board_.height-1;
 
@@ -343,9 +344,9 @@ class ZAction : public Action {
     virtual Tile GetTile() { return Tile::Z; }
 };
 
-class IAction : public Action {
+class IMino : public Mino {
     public:
-    IAction(Board& board) : Action(board) {
+    IMino(Board& board) : Mino(board) {
         x = 3;
         y = board_.height-1;
 
@@ -389,9 +390,9 @@ class IAction : public Action {
     virtual Tile GetTile() { return Tile::I; }
 };
 
-class TAction : public Action {
+class TMino : public Mino {
     public:
-    TAction(Board& board) : Action(board) {
+    TMino(Board& board) : Mino(board) {
         x = 3;
         y = board_.height-1;
 

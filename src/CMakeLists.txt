@@ -1,1 +1,1 @@
-add_library(Tetris core/Tetris.cpp)
+add_library(libtetris core/Tetris.cpp)

@@ -75,18 +75,12 @@ std::ostream &tetris::operator<<(std::ostream &os, const Board &b) {
     return os << b.to_string();
 }
 
-void Action::InternalTranslate(int x, int y) {
+void Mino::InternalTranslate(int x, int y) {
     this->x += x;
     this->y += y;
 }
 
-void Action::InternalRotate(Rotation r) {
-    if(r == Rotation::OneEighty) {
-        // Rotate twice by 90 degrees
-        InternalRotate(Rotation::Clockwise);
-        InternalRotate(Rotation::Clockwise);
-        return;
-    }
+void Mino::InternalRotate(Rotation r) {
     // Transpose the matrix
     for(int i = 0; i < bb_h; i++) {
         for(int j = 0; j < i; j++) {
@@ -119,7 +113,7 @@ void Action::InternalRotate(Rotation r) {
     }
 }
 
-bool Action::Translate(int x, int y) {
+bool Mino::Translate(int x, int y) {
     InternalTranslate(x, y);
     if(Colliding()) {
         InternalTranslate(-x, -y);
@@ -128,7 +122,7 @@ bool Action::Translate(int x, int y) {
     return true;
 }
 
-Action::RotationContext Action::Rotate(Rotation r) {
+RotationContext Mino::Rotate(Rotation r) {
     Rotation r_inv;
     switch(r) {
         case Rotation::Clockwise:
@@ -136,9 +130,6 @@ Action::RotationContext Action::Rotate(Rotation r) {
             break;
         case Rotation::CounterClockwise:
             r_inv = Rotation::Clockwise;
-            break;
-        case Rotation::OneEighty:
-            r_inv = Rotation::OneEighty;
             break;
     }
 
@@ -179,7 +170,7 @@ Action::RotationContext Action::Rotate(Rotation r) {
     return {true, kick_table_idx > 0};
 }
 
-bool Action::Colliding() {
+bool Mino::Colliding() {
     for(int i = 0; i < bb_h; i++) {
         for(int j = 0; j < bb_w; j++) {
             if(j+x < 0 || j+x >= board_.width) {
@@ -207,7 +198,7 @@ bool Action::Colliding() {
     return false;
 }
 
-void Action::ApplyToBoard() {
+void Mino::ApplyToBoard() {
     for(int i = 0; i < bb_h; i++) {
         for(int j = 0; j < bb_w; j++) {
             if(bounding_box_[i][j] != Tile::Empty) {
@@ -220,7 +211,7 @@ void Action::ApplyToBoard() {
     }
 }
 
-std::string Action::to_string() const {
+std::string Mino::to_string() const {
     std::string s = "";
     for(int i = 0; i < bb_h; i++) {
         for(int j = 0; j < bb_w; j++) {
@@ -269,14 +260,14 @@ std::string Action::to_string() const {
     return s;
 }
 
-bool TAction::IsTSpin() {
+bool TMino::IsTSpin() {
     //TODO: Tspin detection
 }
 
-bool TAction::IsMiniTSpin() {
+bool TMino::IsMiniTSpin() {
     //TODO: Mini Tspin detection
 }
 
-std::ostream &tetris::operator<<(std::ostream &os, const Action &a) {
+std::ostream &tetris::operator<<(std::ostream &os, const Mino &a) {
     return os << a.to_string();
 }
