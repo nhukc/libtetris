@@ -39,6 +39,9 @@ struct Board {
     // As specified in the guideline, y=0 is the bottom of the board
     Tile GetSquare(int x, int y) const;
 
+    // Apply a mino to the board
+    void ApplyMino(tetris::Mino& mino);
+
     // Detects if lines should be cleared and updates the board
     // returns the number of lines cleared
     int UpdateBoard();
@@ -60,76 +63,74 @@ struct RotationContext {
 class Mino {
     protected:
 
-    // size of bounding box
-    int bb_w, bb_h;
-    
-    // bounding box of the piece
-    // used to compute rotations
-    // edges of bounding box may exist outside of board
-    std::vector<std::vector<Tile>> bounding_box_;
-   
     // Map of kicks for rotations
     // Each key is of the form (original orientation, new orientation)
     // The values describe possible translations if rotation causes collisions
     // If none of these kicks work, then rotation is impossible
     std::map<std::pair<int, int>, std::vector<std::pair<int, int>>> kick_table_;
 
-    // Pieces lock after harddrop or after staying still for the lock-delay time
-    bool locked_;
-
-    // Board used to detect collisions when rotating/translating
-    Board& board_;
-
-    // Translates the mino without collision checking
-    void InternalTranslate(int x, int y);
-
-    // Rotates the mino without collision checking
-    void InternalRotate(Rotation r);
-
     public:
 
     // location of top left corner of bounding box with respect to board
     int x, y;
+    
+    // size of bounding box
+    int bb_w, bb_h;
+    
+    // bounding box of the piece
+    // used to compute rotations
+    // edges of bounding box may exist outside of board
+    std::vector<std::vector<Tile>> bounding_box_; 
     
     // current orientation of piece
     // 0 - original
     // 1 - cw turned once
     // used to compute kicks
     int orientation_ = 0;
-
-    Mino(Board& board) : board_(board) {
-        // TODO: Determine where pieces should spawn
-    };
     
+    Mino(int x, int y) : x(x), y(y) {};
+
+    // Create mino in default position of board
+    Mino(Board& board);
+ 
     // Gets the Tile represented by this mino
     virtual Tile GetTile() = 0;
+    
+    // Translates the mino without collision checking
+    void InternalTranslate(int x, int y);
+
+    // Rotates the mino without collision checking
+    void InternalRotate(Rotation r);
 
     // Translates this mino with collisions detected in context of board
     // returns -1 if failed
-    bool Translate(int x, int y);
+    bool Translate(int x, int y, Board& board);
 
     // Rotates this mino with collisions detected in context of board
     // returns -1 if failed
-    RotationContext Rotate(Rotation r);
+    RotationContext Rotate(Rotation r, Board& board);
 
     // Checks if the mino overlaps with any non-empty squares in the board
     // or if the mino is partially outside the board.
     // Returns true if the mino collides with walls or non-empty squares
     // Otherwise, returns false
-    bool Colliding();
+    bool Colliding(Board& board); 
 
-    // Check if the piece is locked already
-    bool IsLocked() { return locked_; }
+    // Returns an vector of 2-tuples representing which x/y positions would be filled by this piece
+    std::vector<std::vector<int>> GetFilledCoordinates() const;
 
     // Check if current placement of mino would count a t-spin
     virtual bool IsTSpin() { return false; };
     
     // Check if current placement of mino would count a t-spin
     virtual bool IsMiniTSpin() { return false; };
-    
-    // Overwrites board squares with this mino
-    void ApplyToBoard();
-    
+
+    virtual Mino* Clone() = 0;
+
+    // Checks if minos are positionally identical
+    // Returns true iff both minos occupy same position (not necessarily orientation or x/y)
+    bool operator==(const Mino& t) const;
+   
     std::string to_string() const; 
 };
 
@@ -137,10 +138,7 @@ std::ostream &operator<<(std::ostream &os, const Mino &b);
 
 class OMino : public Mino {
     public:
-    OMino(Board& board) : Mino(board) {
-        x = 4;
-        y = board_.height-1;
-
+    OMino(int x, int y, int orientation) : Mino(x, y) {
         bb_w = 2;
         bb_h = 2;
 
@@ -159,17 +157,25 @@ class OMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0} })));
+        
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
     }
 
-    virtual Tile GetTile() { return Tile::O; }
+    OMino(Board& board) : OMino(4, board.height-1, 0) {}
+
+    Mino* Clone() override {
+        return new OMino(x, y, orientation_);
+    }
+
+    Tile GetTile() override { return Tile::O; }
 };
 
 class LMino : public Mino {
     public:
-    LMino(Board& board) : Mino(board) {
-        x = 3;
-        y = board_.height-1;
-
+    LMino(int x, int y, int orientation) : Mino(x, y) {
         bb_w = 3;
         bb_h = 3;
 
@@ -204,17 +210,25 @@ class LMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
+        
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
+    }
+
+    LMino(Board& board) : LMino(3, board.height-1, 0) {}
+    
+    Mino* Clone() override {
+        return new LMino(x, y, orientation_);
     }
     
-    virtual Tile GetTile() { return Tile::L; }
+    Tile GetTile() override { return Tile::L; }
 };
 
 class JMino : public Mino {
     public:
-    JMino(Board& board) : Mino(board) {
-        x = 3;
-        y = board_.height-1;
-
+    JMino(int x, int y, int orientation) : Mino(x, y) {
         bb_w = 3;
         bb_h = 3;
 
@@ -249,17 +263,24 @@ class JMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
+        
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
+    }
+    JMino(Board& board) : JMino(3, board.height-1, 0) {}
+    
+    Mino* Clone() override {
+        return new JMino(x, y, orientation_);
     }
     
-    virtual Tile GetTile() { return Tile::J; }
+    Tile GetTile() override { return Tile::J; }
 };
 
 class SMino : public Mino {
     public:
-    SMino(Board& board) : Mino(board) {
-        x = 3;
-        y = board_.height-1;
-
+    SMino(int x, int y, int orientation ) : Mino(x, y) {
         bb_w = 3;
         bb_h = 3;
 
@@ -294,17 +315,24 @@ class SMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
+        
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
+    }
+    SMino(Board& board) : SMino(3, board.height-1, 0) {}
+    
+    Mino* Clone() override {
+        return new SMino(x, y, orientation_);
     }
 
-    virtual Tile GetTile() { return Tile::S; }
+    Tile GetTile() override { return Tile::S; }
 };
 
 class ZMino : public Mino {
     public:
-    ZMino(Board& board) : Mino(board) {
-        x = 3;
-        y = board_.height-1;
-
+    ZMino(int x, int y, int orientation) : Mino(x, y) {
         bb_w = 3;
         bb_h = 3;
 
@@ -339,17 +367,24 @@ class ZMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
+        
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
+    }
+    ZMino(Board& board) : ZMino(3, board.height-1, 0) {}
+
+    Mino* Clone() override {
+        return new ZMino(x, y, orientation_);
     }
 
-    virtual Tile GetTile() { return Tile::Z; }
+    Tile GetTile() override { return Tile::Z; }
 };
 
 class IMino : public Mino {
     public:
-    IMino(Board& board) : Mino(board) {
-        x = 3;
-        y = board_.height-1;
-
+    IMino(int x, int y, int orientation) : Mino(x, y) {
         bb_w = 4;
         bb_h = 4;
 
@@ -385,17 +420,24 @@ class IMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0}, {-2,0}, {1,0}, {-2,-1}, {1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {-2,0}, {1,-2}, {-2,1} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {2,0}, {-1,2}, {2,-1} })));
+        
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
+    }
+    IMino(Board& board) : IMino(3, board.height-1, 0) {}
+    
+    Mino* Clone() override {
+        return new IMino(x, y, orientation_);
     }
 
-    virtual Tile GetTile() { return Tile::I; }
+    Tile GetTile() override { return Tile::I; }
 };
 
 class TMino : public Mino {
     public:
-    TMino(Board& board) : Mino(board) {
-        x = 3;
-        y = board_.height-1;
-
+    TMino(int x, int y, int orientation) : Mino(x, y) {
         bb_w = 3;
         bb_h = 3;
 
@@ -430,9 +472,20 @@ class TMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,2), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
+
+        orientation_ = orientation;
+        for(int i = 0; i < orientation; i++) {
+            InternalRotate(Rotation::Clockwise);
+        }
+
+    }
+    TMino(Board& board) : TMino(3, board.height-1, 0) {}
+    
+    Mino* Clone() override {
+        return new TMino(x, y, orientation_);
     }
     
-    virtual Tile GetTile() { return Tile::T; }
+    Tile GetTile() override { return Tile::T; }
     
     virtual bool IsTSpin();
     virtual bool IsMiniTSpin();

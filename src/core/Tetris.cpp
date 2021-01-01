@@ -21,6 +21,45 @@ Tile Board::GetSquare(int x, int y) const {
     return board_[x + y*width];
 }
 
+void Board::ApplyMino(Mino& mino) {
+    for(std::vector<int> c : mino.GetFilledCoordinates()) {
+        FillSquare(c[0], c[1], mino.GetTile());
+    }
+}
+
+int Board::UpdateBoard() {
+    std::vector<int> cleared;
+    for(int i = 0; i < height; i++) {
+        int cnt = 0;
+        for(int j = 0; j < width; j++) {
+            if(GetSquare(j, i) != Tile::Empty) {
+                cnt++;
+            }
+        }
+        if(cnt == width) {
+            cleared.push_back(i);
+        }
+    }
+    for(int i = 0; i < height; i++) {
+        int shift = 0;
+        bool skip = false;
+        for(int x : cleared) {
+            if(i > x) {
+                shift++;
+            }
+            if(i == x) {
+                skip = true;
+            }
+        }
+        if(skip) {
+            continue;
+        }
+        for(int j = 0; j < width; j++) {
+            FillSquare(j, i-shift, GetSquare(j, i));
+        }
+    }
+}
+
 std::string Board::to_string() const {
     std::string s = "";
     for(int i = height-1; i >= 0; i--) {
@@ -113,16 +152,16 @@ void Mino::InternalRotate(Rotation r) {
     }
 }
 
-bool Mino::Translate(int x, int y) {
+bool Mino::Translate(int x, int y, Board& board) {
     InternalTranslate(x, y);
-    if(Colliding()) {
+    if(Colliding(board)) {
         InternalTranslate(-x, -y);
         return false;
     }
     return true;
 }
 
-RotationContext Mino::Rotate(Rotation r) {
+RotationContext Mino::Rotate(Rotation r, Board& board) {
     Rotation r_inv;
     switch(r) {
         case Rotation::Clockwise:
@@ -151,7 +190,7 @@ RotationContext Mino::Rotate(Rotation r) {
         x += std::get<0>(kick_table_[std::make_pair(original_orientation, new_orientation)][kick_table_idx]);
         y += std::get<1>(kick_table_[std::make_pair(original_orientation, new_orientation)][kick_table_idx]);
 
-        if(!Colliding()) {
+        if(!Colliding(board)) {
             std::cout << kick_table_idx << "\n";
             break;
         }
@@ -170,10 +209,10 @@ RotationContext Mino::Rotate(Rotation r) {
     return {true, kick_table_idx > 0};
 }
 
-bool Mino::Colliding() {
+bool Mino::Colliding(Board& board) {
     for(int i = 0; i < bb_h; i++) {
         for(int j = 0; j < bb_w; j++) {
-            if(j+x < 0 || j+x >= board_.width) {
+            if(j+x < 0 || j+x >= board.width) {
                 // Piece of mino is outside the board
                 if(bounding_box_[i][j] != Tile::Empty) {
                     return true;
@@ -181,7 +220,7 @@ bool Mino::Colliding() {
                 // Otherwise it's just a portion of the bounding box outside the board
                 continue;    
             }
-            if(y-i < 0 || y-i >= board_.height) {
+            if(y-i < 0 || y-i >= board.height) {
                 // Piece of mino is outside the board
                 if(bounding_box_[i][j] != Tile::Empty) {
                     return true;
@@ -190,25 +229,12 @@ bool Mino::Colliding() {
                 continue;    
             }
             // Inside the board, just check if tiles overlap
-            if(bounding_box_[i][j] != Tile::Empty && board_.GetSquare(j+x, y-i) != Tile::Empty) {
+            if(bounding_box_[i][j] != Tile::Empty && board.GetSquare(j+x, y-i) != Tile::Empty) {
                 return true;
             }
         }
     }
     return false;
-}
-
-void Mino::ApplyToBoard() {
-    for(int i = 0; i < bb_h; i++) {
-        for(int j = 0; j < bb_w; j++) {
-            if(bounding_box_[i][j] != Tile::Empty) {
-                // Negative y coordinate since 0th row of board is bottom, but 0th row of bb is top
-                if(j+x >= 0 && j+x < board_.width && y-i >= 0 && y-i < board_.height) {
-                    board_.FillSquare(j+x, y-i, bounding_box_[i][j]); 
-                }
-            }
-        }
-    }
 }
 
 std::string Mino::to_string() const {
@@ -270,4 +296,20 @@ bool TMino::IsMiniTSpin() {
 
 std::ostream &tetris::operator<<(std::ostream &os, const Mino &a) {
     return os << a.to_string();
+}
+
+bool Mino::operator==(const Mino& b) const {
+    return GetFilledCoordinates() == b.GetFilledCoordinates();
+}
+
+std::vector<std::vector<int>> Mino::GetFilledCoordinates() const {
+    std::vector<std::vector<int>> coords;
+    for(int i = 0; i < bb_h; i++) {
+        for(int j = 0; j < bb_w; j++) {
+            if(bounding_box_[i][j] != tetris::Tile::Empty) {
+               coords.push_back({x+j, y-i}); 
+            }
+        }
+    }
+    return coords;
 }
