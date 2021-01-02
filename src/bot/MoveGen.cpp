@@ -8,16 +8,15 @@ public:
     // Somewhat reasonable hash function
     size_t operator()(const tetris::Mino* t) const
     { 
-        std::vector<std::vector<int>> filled_coords = t->GetFilledCoordinates();
+        tetris::PointVec filled_coords = t->GetFilledCoordinates();
         size_t h1 = 0;
         size_t h2 = 0;
-        for(int i = 0; i < filled_coords.size(); i++) {
-            h1 += filled_coords[i][0];
+        for(int i = 0; i < filled_coords.Size(); i++) {
+            h1 += filled_coords.Get(i,0);
             h1 *= 37;
-            h2 += filled_coords[i][1];
+            h2 += filled_coords.Get(i,1);
             h2 *= 37;
         }
-        std::cout << (h1^h2) << "\n";
         return h1 ^ h2;
     } 
 }; 
@@ -56,31 +55,31 @@ std::vector<std::unique_ptr<tetris::Mino>> FindPossiblePositions(tetris::Board b
             }
             // Start at max_height + bb_h since mino is positioned by top left corner of bounding box
             for(int j = max_height + mino.bb_h; j >= 0; j--) {
-                tetris::Mino* mino_copy = mino.Clone();
-                mino_copy->x = i;
-                mino_copy->y = j;
-                if(seen.count(mino_copy) > 0) {
-                    continue;
-                }
-                if(mino_copy->Colliding(board)) {
+                mino.x = i;
+                mino.y = j;
+                if(mino.Colliding(board)) {
                     continue;
                 }
                 // Ensure mino is on a surface
-                mino_copy->x = i;
-                mino_copy->y = j-1;
-                if(!mino_copy->Colliding(board)) {
+                mino.x = i;
+                mino.y = j-1;
+                if(!mino.Colliding(board)) {
                     continue;
                 }
-                mino_copy->x = i;
-                mino_copy->y = j;
+                mino.x = i;
+                mino.y = j;
 
+                // Create mino_copy at the end to reduce malloc calls
+                tetris::Mino* mino_copy = mino.Clone();
                 seen.insert(mino_copy);
-                positions.push_back(std::unique_ptr<tetris::Mino>(mino_copy));
                 // Does not check if underground position is reachable for performance reasons (kicks, tspins, etc)
                 // Filter out these cases manually later in pipeline
             }
         }
         mino.InternalRotate(tetris::Rotation::Clockwise);
+    }
+    for(auto *x : seen) {
+        positions.push_back(std::unique_ptr<tetris::Mino>(x));
     }
     return positions;
 }

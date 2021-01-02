@@ -22,8 +22,9 @@ Tile Board::GetSquare(int x, int y) const {
 }
 
 void Board::ApplyMino(Mino& mino) {
-    for(std::vector<int> c : mino.GetFilledCoordinates()) {
-        FillSquare(c[0], c[1], mino.GetTile());
+    PointVec points = mino.GetFilledCoordinates();
+    for(int i = 0; i < points.Size(); i++) {
+        FillSquare(points.Get(i,0), points.Get(i,1), mino.GetTile());
     }
 }
 
@@ -210,28 +211,18 @@ RotationContext Mino::Rotate(Rotation r, Board& board) {
 }
 
 bool Mino::Colliding(Board& board) {
-    for(int i = 0; i < bb_h; i++) {
-        for(int j = 0; j < bb_w; j++) {
-            if(j+x < 0 || j+x >= board.width) {
-                // Piece of mino is outside the board
-                if(bounding_box_[i][j] != Tile::Empty) {
-                    return true;
-                }
-                // Otherwise it's just a portion of the bounding box outside the board
-                continue;    
-            }
-            if(y-i < 0 || y-i >= board.height) {
-                // Piece of mino is outside the board
-                if(bounding_box_[i][j] != Tile::Empty) {
-                    return true;
-                }
-                // Otherwise it's just a portion of the bounding box outside the board
-                continue;    
-            }
-            // Inside the board, just check if tiles overlap
-            if(bounding_box_[i][j] != Tile::Empty && board.GetSquare(j+x, y-i) != Tile::Empty) {
-                return true;
-            }
+    PointVec points = GetFilledCoordinates();
+    for(int i = 0; i < points.Size(); i++) {
+        int x = points.Get(i,0);
+        int y = points.Get(i,1);
+        if(x < 0 || x >= board.width) {
+            return true;
+        }
+        if(y < 0 || y >= board.height) {
+            return true;
+        }
+        if(board.GetSquare(x, y) != Tile::Empty) {
+            return true;
         }
     }
     return false;
@@ -302,14 +293,317 @@ bool Mino::operator==(const Mino& b) const {
     return GetFilledCoordinates() == b.GetFilledCoordinates();
 }
 
-std::vector<std::vector<int>> Mino::GetFilledCoordinates() const {
-    std::vector<std::vector<int>> coords;
-    for(int i = 0; i < bb_h; i++) {
-        for(int j = 0; j < bb_w; j++) {
-            if(bounding_box_[i][j] != tetris::Tile::Empty) {
-               coords.push_back({x+j, y-i}); 
+template<int N>
+constexpr std::array<std::array<int, 2>, 4> GetFilledCoordinates_(std::array<std::array<Tile,N>,N> bounding_box) {
+    std::array<std::array<int, 2>, 4> coords;
+    int c = 0;
+    for(int i = 0; i < N; i++) {
+        for(int j = 0; j < N; j++) {
+            if(bounding_box[i][j] != tetris::Tile::Empty) {
+                coords[c][0] = j;
+                coords[c][1] = i;
+                c++;     
             }
         }
     }
     return coords;
+}
+
+// Computes rotations at compile-time
+template<int N>
+constexpr std::array<std::array<Tile,N>, N> rotate(std::array<std::array<Tile,N>, N> array) {
+    std::array<std::array<Tile, N>, N> result;
+    // Transpose the matrix
+    for(int i = 0; i < N; i++) {
+        for(int j = 0; j < N; j++) {
+            result[i][j] = array[j][i];
+        }
+    }
+    // Reflect over y-axis
+    for(int i = 0; i < N; i++) {
+        for(int j = 0; j < N/2; j++) {
+            Tile tmp = result[i][j];
+            result[i][j] = result[i][N - j - 1];
+            result[i][N - j - 1] = tmp;
+        }
+    }
+    return result;
+}
+
+inline PointVec Mino::GetFilledCoordinatesSlow() const {
+    PointVec coords;
+    for(int i = 0; i < bb_h; i++) {
+        for(int j = 0; j < bb_w; j++) {
+            if(bounding_box_[i][j] != tetris::Tile::Empty) {
+               coords.Push(x+j, y-i); 
+            }
+        }
+    }
+    return coords;
+}
+
+// This function is very performance sensitive
+// We do some magic with constexpr and templating to frontload computations to compile-time
+inline PointVec Mino::GetFilledCoordinates() const {
+    switch(tile_type) { 
+        case Tile::O: {
+            constexpr std::array<std::array<Tile,2>,2> arr({
+                    std::array<Tile,2>({Tile::O, Tile::O}), 
+                    std::array<Tile,2>({Tile::O, Tile::O}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<2>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<2>(rotate<2>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<2>(rotate<2>(rotate<2>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<2>(rotate<2>(rotate<2>(rotate<2>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+        case Tile::L: {
+            std::array<std::array<int, 2>, 4> coords_;
+            constexpr std::array<std::array<Tile,3>,3> arr({
+                    std::array<Tile,3>({Tile::Empty, Tile::Empty, Tile::L}), 
+                    std::array<Tile,3>({Tile::L,     Tile::L,     Tile::L}), 
+                    std::array<Tile,3>({Tile::Empty, Tile::Empty, Tile::Empty}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<3>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<3>(rotate<3>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(rotate<3>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+        case Tile::J: {
+            std::array<std::array<int, 2>, 4> coords_;
+            constexpr std::array<std::array<Tile,3>,3> arr({
+                    std::array<Tile,3>({Tile::J,     Tile::Empty, Tile::Empty}), 
+                    std::array<Tile,3>({Tile::J,     Tile::J,     Tile::J}), 
+                    std::array<Tile,3>({Tile::Empty, Tile::Empty, Tile::Empty}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<3>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<3>(rotate<3>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(rotate<3>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+        case Tile::S: {
+            std::array<std::array<int, 2>, 4> coords_;
+            constexpr std::array<std::array<Tile,3>,3> arr({
+                    std::array<Tile,3>({Tile::Empty, Tile::S,     Tile::S}), 
+                    std::array<Tile,3>({Tile::S,     Tile::S,     Tile::Empty}), 
+                    std::array<Tile,3>({Tile::Empty, Tile::Empty, Tile::Empty}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<3>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<3>(rotate<3>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(rotate<3>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+        case Tile::Z: {
+            std::array<std::array<int, 2>, 4> coords_;
+            constexpr std::array<std::array<Tile,3>,3> arr({
+                    std::array<Tile,3>({Tile::Z,     Tile::Z,     Tile::Empty}), 
+                    std::array<Tile,3>({Tile::Empty, Tile::Z,     Tile::Z}), 
+                    std::array<Tile,3>({Tile::Empty, Tile::Empty, Tile::Empty}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<3>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<3>(rotate<3>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(rotate<3>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+        case Tile::I: {
+            std::array<std::array<int, 2>, 4> coords_;
+            constexpr std::array<std::array<Tile,4>,4> arr({
+                    std::array<Tile,4>({Tile::Empty, Tile::Empty, Tile::Empty, Tile::Empty}), 
+                    std::array<Tile,4>({Tile::I,     Tile::I,     Tile::I,     Tile::I}), 
+                    std::array<Tile,4>({Tile::Empty, Tile::Empty, Tile::Empty, Tile::Empty}), 
+                    std::array<Tile,4>({Tile::Empty, Tile::Empty, Tile::Empty, Tile::Empty}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<4>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<4>(rotate<4>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<4>(rotate<4>(rotate<4>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<4>(rotate<4>(rotate<4>(rotate<4>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+        case Tile::T: {
+            std::array<std::array<int, 2>, 4> coords_;
+            constexpr std::array<std::array<Tile,3>,3> arr({
+                    std::array<Tile,3>({Tile::Empty, Tile::T,     Tile::Empty}), 
+                    std::array<Tile,3>({Tile::T,     Tile::T,     Tile::T}), 
+                    std::array<Tile,3>({Tile::Empty, Tile::Empty, Tile::Empty}), 
+            });
+            // Without intermediate constexpr variables, these will be evaluated at runtime
+            constexpr std::array<std::array<int, 2>, 4> coords0 = GetFilledCoordinates_<3>(arr);
+            constexpr std::array<std::array<int, 2>, 4> coords1 = GetFilledCoordinates_<3>(rotate<3>(arr));
+            constexpr std::array<std::array<int, 2>, 4> coords2 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(arr)));
+            constexpr std::array<std::array<int, 2>, 4> coords3 = GetFilledCoordinates_<3>(rotate<3>(rotate<3>(rotate<3>(arr))));
+            PointVec coords;
+            switch(orientation_) {
+                case 0:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords0[i][0], y-coords0[i][1]);
+                    }
+                    break;
+                case 1:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords1[i][0], y-coords1[i][1]);
+                    }
+                    break;
+                case 2:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords2[i][0], y-coords2[i][1]);
+                    }
+                    break;
+                case 3:
+                    for(int i = 0; i < 4; i++) {
+                        coords.Push(x+coords3[i][0], y-coords3[i][1]);
+                    }
+                    break;
+            }
+            return coords;
+        }
+    }
+    return GetFilledCoordinatesSlow();
 }

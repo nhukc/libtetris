@@ -59,6 +59,45 @@ struct RotationContext {
     bool kicked;
 };
 
+// Wrapper class to avoid multidimensional vectors
+struct PointVec {
+    public:
+    // Holds at most 8 points
+    int vec[2*8];
+    int size = 0;
+
+    PointVec() {}
+
+    // Get ith point, coordinate j
+    // 0 <= i < length
+    // 0 <= j <= 1
+    inline int Get(int i, int j) {
+        return vec[i*2 + j];
+    }
+
+    inline void Set(int i, int j, int x) {
+        vec[i*2 + j] = x;
+    }
+
+    inline void Push(int x, int y) {
+        vec[2*size] = x;
+        vec[2*size+1] = y;
+        size++;
+    }
+
+    inline int Size() {
+        return size;
+    }
+
+    inline bool operator==(const PointVec& rhs){ 
+        for(int i = 0; i < size*2; i++) {
+            if(vec[i] != rhs.vec[i])
+                return false;
+        }
+        return true;
+    }
+};
+
 // Represents the action of placing one mino to the board
 class Mino {
     protected:
@@ -68,6 +107,8 @@ class Mino {
     // The values describe possible translations if rotation causes collisions
     // If none of these kicks work, then rotation is impossible
     std::map<std::pair<int, int>, std::vector<std::pair<int, int>>> kick_table_;
+
+    tetris::Tile tile_type;
 
     public:
 
@@ -117,7 +158,8 @@ class Mino {
     bool Colliding(Board& board); 
 
     // Returns an vector of 2-tuples representing which x/y positions would be filled by this piece
-    std::vector<std::vector<int>> GetFilledCoordinates() const;
+    inline PointVec GetFilledCoordinates() const;
+    inline PointVec GetFilledCoordinatesSlow() const;
 
     // Check if current placement of mino would count a t-spin
     virtual bool IsTSpin() { return false; };
@@ -158,10 +200,11 @@ class OMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0} })));
         
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
+        tile_type = Tile::O;
     }
 
     OMino(Board& board) : OMino(4, board.height-1, 0) {}
@@ -211,10 +254,11 @@ class LMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
         
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
+        tile_type = Tile::L;
     }
 
     LMino(Board& board) : LMino(3, board.height-1, 0) {}
@@ -264,10 +308,11 @@ class JMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
         
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
+        tile_type = Tile::J;
     }
     JMino(Board& board) : JMino(3, board.height-1, 0) {}
     
@@ -316,10 +361,11 @@ class SMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
         
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
+        tile_type = Tile::S;
     }
     SMino(Board& board) : SMino(3, board.height-1, 0) {}
     
@@ -368,10 +414,11 @@ class ZMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
         
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
+        tile_type = Tile::Z;
     }
     ZMino(Board& board) : ZMino(3, board.height-1, 0) {}
 
@@ -421,10 +468,11 @@ class IMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {-2,0}, {1,-2}, {-2,1} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {2,0}, {-1,2}, {2,-1} })));
         
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
+        tile_type = Tile::I;
     }
     IMino(Board& board) : IMino(3, board.height-1, 0) {}
     
@@ -473,11 +521,11 @@ class TMino : public Mino {
         kick_table_.insert(std::make_pair(std::make_pair(3,0), std::vector<std::pair<int,int>> ({ {0,0}, {-1,0}, {-1,-1}, {0,2}, {-1,2} })));
         kick_table_.insert(std::make_pair(std::make_pair(0,3), std::vector<std::pair<int,int>> ({ {0,0}, {1,0}, {1,1}, {0,-2}, {1,-2} })));
 
-        orientation_ = orientation;
+        
         for(int i = 0; i < orientation; i++) {
             InternalRotate(Rotation::Clockwise);
         }
-
+        tile_type = Tile::T;
     }
     TMino(Board& board) : TMino(3, board.height-1, 0) {}
     
