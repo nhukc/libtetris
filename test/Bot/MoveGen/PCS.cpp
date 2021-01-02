@@ -9,11 +9,11 @@ int main() {
     tetris::Board b = f.pages[8];
     b.UpdateBoard();
     tetris::SMino mino(b);
-    auto vec = FindPossiblePositions(b, mino);
+    auto vec = FindPossiblePositions(ToBitBoard(b), mino.GetTile());
 
     for(auto& x : vec) {
         tetris::Board b2 = b;
-        b2.ApplyMino(*x);
+        b2.ApplyMino(*FromMoveInfo(x));
         std::cout << b2 << "\n";
     }
     std::cout << vec.size();
