@@ -24,4 +24,6 @@ endif()
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
 add_executable(test1 main.cpp)
+add_executable(test2 main2.cpp)
 target_link_libraries(test1 libtetris bot)
+target_link_libraries(test2 libtetris bot)

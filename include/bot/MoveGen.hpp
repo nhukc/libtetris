@@ -18,6 +18,7 @@ struct move_info {
 
 bit_board ToBitBoard(tetris::Board board);
 tetris::Mino* FromMoveInfo(move_info move);
+bit_board MoveToBitBoard(move_info move);
 
 // Given a board and a mino, generates all possible new mino positions
 std::vector<move_info> FindPossiblePositions(bit_board board, tetris::Tile mino);

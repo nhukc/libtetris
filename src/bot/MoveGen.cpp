@@ -2,36 +2,6 @@
 #include <iostream>
 #include <bits/stdc++.h>
 
-bit_board ToBitBoard(tetris::Board board) {
-    bit_board b = 0;
-    for(int i = 0; i < board.width; i++) {
-        for(int j = 0; j < board.height; j++) {
-            if(board.GetSquare(i,j) != tetris::Tile::Empty)
-                b = b | (1 << (i + j*board.width));
-        }
-    }
-    return b;
-}
-
-tetris::Mino* FromMoveInfo(move_info move) {
-    switch(move.piece_type) {
-        case tetris::Tile::O:
-            return new tetris::OMino(move.x, move.y, move.orientation);
-        case tetris::Tile::I:
-            return new tetris::IMino(move.x, move.y, move.orientation);
-        case tetris::Tile::L:
-            return new tetris::LMino(move.x, move.y, move.orientation);
-        case tetris::Tile::J:
-            return new tetris::JMino(move.x, move.y, move.orientation);
-        case tetris::Tile::T:
-            return new tetris::TMino(move.x, move.y, move.orientation);
-        case tetris::Tile::Z:
-            return new tetris::ZMino(move.x, move.y, move.orientation);
-        case tetris::Tile::S:
-            return new tetris::SMino(move.x, move.y, move.orientation);
-    }
-}
-
 // Empty bitboard with a piece in the bottom left corner
 bit_board piece_boards[7][4] = {
     // Rows are reflected from what you'd see in a picture
@@ -87,6 +57,158 @@ bit_board piece_boards[7][4] = {
     },
 };
 
+struct piece_constants {
+    // x_min offset from 0
+    int x_min;
+    // x_max offset from width
+    int x_max;
+    // y_min offset from 0
+    int y_min;
+    // y_max offset from height
+    int y_max;
+    // bounding box sizes
+    int bb_h;
+    int bb_w;
+};
+
+piece_constants piece_constants[7][4] {
+    // O
+    {
+        {0, -2, 1, -1, 2, 2},
+        // These 3 are unused
+        {0, -2, 1, -1, 2, 2},
+        {0, -2, 1, -1, 2, 2},
+        {0, -2, 1, -1, 2, 2},
+    },
+    // L
+    {
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+        {0, -3, 2, 0, 3, 3},
+        {0, -2, 2, -1, 3, 3},
+    },
+    // J
+    {
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+        {0, -3, 2, 0, 3, 3},
+        {0, -2, 2, -1, 3, 3},
+    },
+    // S
+    {
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+        // These 2 are unused
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+    },
+    // Z
+    {
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+        // These 2 are unused
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+    },
+    // T
+    {
+        {0, -3, 1, -1, 3, 3},
+        {-1, -3, 2, -1, 3, 3},
+        {0, -3, 2, -1, 3, 3},
+        {0, -2, 2, -1, 3, 3},
+    },
+    // I
+    {
+        {0, -4, 1, 0, 4, 4},
+        {-2, -3, 3, -1, 4, 4},
+        // These 2 are unused
+        {0, -4, 1, 0, 4, 4},
+        {-2, -3, 3, -1, 4, 4},
+    },
+};
+
+
+bit_board ToBitBoard(tetris::Board board) {
+    bit_board b = 0;
+    for(int i = 0; i < board.width; i++) {
+        for(int j = 0; j < board.height; j++) {
+            if(board.GetSquare(i,j) != tetris::Tile::Empty)
+                b = b | (1 << (i + j*board.width));
+        }
+    }
+    return b;
+}
+
+tetris::Mino* FromMoveInfo(move_info move) {
+    switch(move.piece_type) {
+        case tetris::Tile::O:
+            return new tetris::OMino(move.x, move.y, move.orientation);
+        case tetris::Tile::I:
+            return new tetris::IMino(move.x, move.y, move.orientation);
+        case tetris::Tile::L:
+            return new tetris::LMino(move.x, move.y, move.orientation);
+        case tetris::Tile::J:
+            return new tetris::JMino(move.x, move.y, move.orientation);
+        case tetris::Tile::T:
+            return new tetris::TMino(move.x, move.y, move.orientation);
+        case tetris::Tile::Z:
+            return new tetris::ZMino(move.x, move.y, move.orientation);
+        case tetris::Tile::S:
+            return new tetris::SMino(move.x, move.y, move.orientation);
+    }
+    assert("We shouldn't get here" == 0);
+}
+
+inline bit_board MoveToBitBoard(move_info move) {
+    int idx = 0;
+    switch(move.piece_type) {
+        case tetris::Tile::O:
+            idx = 0;
+            break;
+        case tetris::Tile::L:
+            idx = 1;
+            break;
+        case tetris::Tile::J:
+            idx = 2;
+            break;
+        case tetris::Tile::S:
+            idx = 3;
+            break;
+        case tetris::Tile::Z:
+            idx = 4;
+            break;
+        case tetris::Tile::T:
+            idx = 5;
+            break;
+        case tetris::Tile::I:
+            idx = 6;
+            break;
+    }
+    const int o = move.orientation;
+    // We need to make sure pieces are fully within the board
+    // Bitboards can cause a "wrapping" effect with pieces that are partially outside the board
+    int x_min = piece_constants[idx][o].x_min;
+    int x_max = piece_constants[idx][o].x_max;
+    int y_min = piece_constants[idx][o].y_min;
+    int y_max = piece_constants[idx][o].y_max;
+    int bb_h = piece_constants[idx][o].bb_h;
+    int bb_w = piece_constants[idx][o].bb_w;
+                
+    bit_board b = piece_boards[idx][o];
+    // Translate piece to x,y
+    // Y coordinate is modified from top-left to bottom-left
+    int x_shift = move.x;
+    int y_shift = move.y - (bb_h - 1);
+    const int board_width = 10;
+    int shift = x_shift + y_shift*board_width;
+    if(shift < 0) {
+        b = b >> -shift;
+    } else {
+        b = b << shift;
+    }
+    return b;
+}
+
 std::vector<move_info> FindPossiblePositions(bit_board board, tetris::Tile mino_type) {
     std::vector<move_info> moves;
     int orientations = 4;
@@ -120,165 +242,48 @@ std::vector<move_info> FindPossiblePositions(bit_board board, tetris::Tile mino_
         }
     }
     for(int o = 0; o < orientations; o++) {
+        int idx = 0;
+        switch(mino_type) {
+            case tetris::Tile::O:
+                idx = 0;
+                break;
+            case tetris::Tile::L:
+                idx = 1;
+                break;
+            case tetris::Tile::J:
+                idx = 2;
+                break;
+            case tetris::Tile::S:
+                idx = 3;
+                break;
+            case tetris::Tile::Z:
+                idx = 4;
+                break;
+            case tetris::Tile::T:
+                idx = 5;
+                break;
+            case tetris::Tile::I:
+                idx = 6;
+                break;
+        }
         // We need to make sure pieces are fully within the board
         // Bitboards can cause a "wrapping" effect with pieces that are partially outside the board
-        int x_min, x_max, y_min, y_max, bb_h, bb_w;
-        switch(mino_type) {
-            case tetris::Tile::O: {
-                x_min = 0;
-                x_max = width-2;
-                y_min = 1;
-                y_max = height-1;
-                bb_h = 2;
-                bb_w = 2;
-                break;
-            }
-            case tetris::Tile::S: 
-            case tetris::Tile::Z: {
-                bb_h = 3;
-                bb_w = 3;
-                if(o == 0) {
-                    x_min = 0;
-                    x_max = width-3;
-                    y_min = 1;
-                    y_max = height-1;
-                    break;
-                }
-                if(o == 1) {
-                    x_min = -1;
-                    x_max = width-3;
-                    y_min = 2;
-                    y_max = height-1;
-                    break;
-                }
-            }
-            case tetris::Tile::L: 
-            case tetris::Tile::J: {
-                bb_h = 3;
-                bb_w = 3;
-                if(o == 0) {
-                    x_min = 0;
-                    x_max = width-3;
-                    y_min = 1;
-                    y_max = height-1;
-                    break;
-                }
-                if(o == 1) {
-                    x_min = -1;
-                    x_max = width-3;
-                    y_min = 2;
-                    y_max = height-1;
-                    break;
-                }
-                if(o == 2) {
-                    x_min = 0;
-                    x_max = width-3;
-                    y_min = 2;
-                    y_max = height;
-                    break;
-                }
-                if(o == 3) {
-                    x_min = 0;
-                    x_max = width-2;
-                    y_min = 2;
-                    y_max = height-1;
-                    break;
-                }
-            }
-            case tetris::Tile::T: {
-                bb_h = 3;
-                bb_w = 3;
-                if(o == 0) {
-                    x_min = 0;
-                    x_max = width-3;
-                    y_min = 1;
-                    y_max = height-1;
-                    break;
-                }
-                if(o == 1) {
-                    x_min = -1;
-                    x_max = width-3;
-                    y_min = 2;
-                    y_max = height-1;
-                    break;
-                }
-                if(o == 2) {
-                    x_min = 0;
-                    x_max = width-3;
-                    y_min = 2;
-                    y_max = height-1;
-                    break;
-                }
-                if(o == 3) {
-                    x_min = 0;
-                    x_max = width-2;
-                    y_min = 2;
-                    y_max = height-1;
-                    break;
-                }
-            }
-            case tetris::Tile::I: {
-                bb_w = 4;
-                bb_h = 4;
-                if(o == 0) {
-                    x_min = 0;
-                    x_max = width-4;
-                    y_min = 1;
-                    y_max = height;
-                    break;
-                }
-                if(o == 1) {
-                    x_min = -2;
-                    x_max = width-3;
-                    y_min = 3;
-                    y_max = height-1;
-                    break;
-                }
-            }
-        }
+        int x_min = 0 + piece_constants[idx][o].x_min;
+        int x_max = width + piece_constants[idx][o].x_max;
+        int y_min = 0 + piece_constants[idx][o].y_min;
+        int y_max = height + piece_constants[idx][o].y_max;
+        int bb_h = piece_constants[idx][o].bb_h;
+        int bb_w = piece_constants[idx][o].bb_w;
+
         for(int i = x_min; i <= x_max; i++) {
             int max_height = 0;
             for(int c = 0; c < bb_w; c++) {
                 if(i + c > 0 && i + c < width)
                     max_height = std::max(column_heights[i + c], max_height);
             }
-            int y_bound = std::min(y_max, y_min + max_height);
+            int y_bound = std::min(y_max, y_min + max_height) + 1;
             for(int j = y_min; j <= y_bound; j++) {
-                int idx = 0;
-                switch(mino_type) {
-                    case tetris::Tile::O:
-                        idx = 0;
-                        break;
-                    case tetris::Tile::L:
-                        idx = 1;
-                        break;
-                    case tetris::Tile::J:
-                        idx = 2;
-                        break;
-                    case tetris::Tile::S:
-                        idx = 3;
-                        break;
-                    case tetris::Tile::Z:
-                        idx = 4;
-                        break;
-                    case tetris::Tile::T:
-                        idx = 5;
-                        break;
-                    case tetris::Tile::I:
-                        idx = 6;
-                        break;
-                }
-                bit_board b = piece_boards[idx][o];
-                // Translate piece to i,j
-                // Y coordinate is modified from top-left to bottom-left
-                int x_shift = i;
-                int y_shift = j - (bb_h - 1);
-                int shift = x_shift + y_shift*width;
-                if(shift < 0) {
-                    b = b >> -shift;
-                } else {
-                    b = b << shift;
-                }
+                bit_board b = MoveToBitBoard({i, j, o, mino_type});
                 if((board & b) != 0) {
                     continue;
                 }
@@ -286,7 +291,7 @@ std::vector<move_info> FindPossiblePositions(bit_board board, tetris::Tile mino_
                 if( ((b >> width) & board) == 0 && (b & 0b1111111111) == 0 ) {
                     continue;
                 }                    
-                moves.push_back({i,j,o,mino_type});
+                moves.push_back({i, j, o, mino_type});
             }
         }
     }
