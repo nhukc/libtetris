@@ -29,36 +29,25 @@ void Board::ApplyMino(Mino& mino) {
 }
 
 int Board::UpdateBoard() {
-    std::vector<int> cleared;
-    for(int i = 0; i < height; i++) {
+    int cleared = 0;
+    for(int h = 0; h < height; h++) {
         int cnt = 0;
         for(int j = 0; j < width; j++) {
-            if(GetSquare(j, i) != Tile::Empty) {
+            if(GetSquare(j, h) != Tile::Empty) {
                 cnt++;
             }
         }
         if(cnt == width) {
-            cleared.push_back(i);
+            for(int i = h+1; i < height; i++) {
+                for(int j = 0; j < width; j++) {
+                    FillSquare(j, i-1, GetSquare(j, i));
+                }
+            }
+            h--;
+            cleared++;
         }
     }
-    for(int i = 0; i < height; i++) {
-        int shift = 0;
-        bool skip = false;
-        for(int x : cleared) {
-            if(i > x) {
-                shift++;
-            }
-            if(i == x) {
-                skip = true;
-            }
-        }
-        if(skip) {
-            continue;
-        }
-        for(int j = 0; j < width; j++) {
-            FillSquare(j, i-shift, GetSquare(j, i));
-        }
-    }
+    return cleared;
 }
 
 std::string Board::to_string() const {

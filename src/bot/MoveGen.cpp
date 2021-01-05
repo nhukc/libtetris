@@ -133,7 +133,7 @@ bit_board ToBitBoard(tetris::Board board) {
     for(int i = 0; i < board.width; i++) {
         for(int j = 0; j < board.height; j++) {
             if(board.GetSquare(i,j) != tetris::Tile::Empty)
-                b = b | (1 << (i + j*board.width));
+                b = b | ((bit_board)1 << (i + j*board.width));
         }
     }
     return b;
