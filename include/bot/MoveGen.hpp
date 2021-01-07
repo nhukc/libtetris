@@ -1,15 +1,14 @@
 #ifndef MOVEGEN_HPP
 #define MOVEGEN_HPP
-#include "core/Randomizers.hpp"
-#include "core/Tetris.hpp"
-#include "third_party/uint256_t.h"
+#include "../core/Randomizers.hpp"
+#include "../core/Tetris.hpp"
 
-#include <climits>
-#include <iostream>
+#include "third_party/uint256_t.h"
+#include <boost/multiprecision/cpp_int.hpp> 
 #include <memory>
 
 // A tetris board can be represented as a 20x10 bits
-typedef uint256_t bit_board;
+typedef boost::multiprecision::uint256_t bit_board;
 
 // More efficient than using minos
 struct move_info {

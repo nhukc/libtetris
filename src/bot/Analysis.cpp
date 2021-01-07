@@ -1,13 +1,23 @@
 #include "bot/Analysis.hpp"
+#include <numeric>
 #include <stack>
 
 void AnalysisContext::IterativeDeepen(int depth, bit_board board, std::vector<tetris::Tile> minos) {
     mino_sequence = minos;
     for(int d = 1; d <= depth; d++) {
-        DFS(d, board, 0, -1, minos[0], 0, false, 0, false);
+        search_node init = {board, d, 0, 0, false, false, 0};
+        DFS(init);
         transposition_matrix.clear();
     }
-    std::reverse(best_moves.begin(), best_moves.end());
+    std::vector<quiescence_node> quiescence_copy = std::move(quiescence_list);
+    // Avoid infinite looping from quiescence search adding more quiescence entries
+    quiescence_list.clear();
+    for(quiescence_node& q_node : quiescence_copy) {
+        curr_moves = q_node.init_state;
+        search_node node = q_node.node;
+        node.depth = 1;
+        DFS(node);
+    }
 }
 
 int update_board(bit_board& board, move_info& move, bool& back_to_back, int& combo) {
@@ -137,31 +147,37 @@ int update_board(bit_board& board, move_info& move, bool& back_to_back, int& com
     return sent;
 }
 
-bool AnalysisContext::DFS(int depth, bit_board board, int curr_idx, int swap_idx, tetris::Tile curr_piece, int attack, bool back_to_back, int combo, bool back_to_back_lost) {
+bool AnalysisContext::Prune(search_node& node) {
+    return false;
+}
+
+bool AnalysisContext::DFS(search_node node) {
     // Add some metadata to the transposition matrix entry
     // Top 56 bits are 0 anyway so we can add whatever we want here
-    bit_board transposition = board 
-        | ((bit_board)(attack&0xff) << 248) 
-        | ((bit_board)(curr_idx&0xff) << 240) 
-        | ((bit_board)(swap_idx&0xff) << 232)
-        | ((bit_board)(back_to_back&0xff) << 224)
-        | ((bit_board)(combo&0xff) << 216);
+    bit_board transposition = node.board 
+        | ((bit_board)(node.attack&0xff) << 248) 
+        | ((bit_board)(node.curr_idx&0xff) << 240) 
+        | ((bit_board)(node.back_to_back&0xff) << 232)
+        | ((bit_board)(node.combo&0xff) << 224);
     if(transposition_matrix.count(transposition) != 0) {
         return false;
     }
     transposition_matrix.insert(transposition);
-    if(depth == 0 || curr_idx > mino_sequence.size()) {
-        int score = Evaluate(board, attack, back_to_back_lost, combo);
+    if(Prune(node)) {
+        return false;
+    }
+    if(node.depth == 0 || node.curr_idx > mino_sequence.size()) {
+        int score = Evaluate(node);
         if(score > best_score) {
             // TODO: Check board is actually reachable
 
             // Clear the best move sequence since our parent calls will update it
-            std::cout << board << "\n";
+            std::cout << node.board << "\n";
             best_score = score;
-            best_moves.clear();
+            best_moves = curr_moves;
             for(int i = 19; i >= 0; i--) {
                 for(int j = 0; j < 10; j++) {
-                    if(board & ((bit_board)1 << (i*10 + j))) {
+                    if(node.board & ((bit_board)1 << (i*10 + j))) {
                         std::cout << "X";
                     }
                     else {
@@ -175,25 +191,28 @@ bool AnalysisContext::DFS(int depth, bit_board board, int curr_idx, int swap_idx
         }
         return false;
     }
-    std::vector<move_info> possible_moves = FindPossiblePositions(board, curr_piece);
+    std::vector<move_info> possible_moves = FindPossiblePositions(node.board, mino_sequence[node.curr_idx]);
     bool found_new_best = false;
     for(auto next_move : possible_moves) {
-        bit_board next_board = board | MoveToBitBoard(next_move);
-        bool new_back_to_back = back_to_back;
-        int new_combo = combo;
-        int new_attack = attack + update_board(next_board, next_move, new_back_to_back, new_combo);
-        if(DFS(depth-1, next_board, curr_idx + 1, swap_idx, mino_sequence[curr_idx+1], new_attack, new_back_to_back, new_combo, back_to_back && !new_back_to_back)) {
-            // This move found a new best, add it to the best move sequence
-            best_moves.push_back(next_move);
-            found_new_best = true;
-        }
+        search_node new_node;
+        new_node.board = node.board | MoveToBitBoard(next_move);
+        new_node.back_to_back = node.back_to_back;
+        new_node.combo = node.combo;
+        // This function updates combo and back_to_back
+        new_node.attack = node.attack + update_board(new_node.board, next_move, new_node.back_to_back, new_node.combo);
+        new_node.back_to_back_lost = node.back_to_back && !new_node.back_to_back;
+        new_node.depth = node.depth - 1;
+        new_node.curr_idx = node.curr_idx + 1;
+        curr_moves.push_back(next_move);
+        DFS(new_node);
+        curr_moves.pop_back();
     }
     return found_new_best;
 }
 
 // This code is extremely performance sensitive
-int AnalysisContext::Evaluate(bit_board board, int attack, bool back_to_back_lost, int combo) {
-    int score = attack*10;
+int AnalysisContext::Evaluate(const search_node& node) {
+    int score = node.attack*10;
 
     // Check for overhangs/holes
     // Each is worth -2 attack
@@ -202,22 +221,130 @@ int AnalysisContext::Evaluate(bit_board board, int attack, bool back_to_back_los
     // on a three depth search.
     bit_board row = 0b1111111111;
     bit_board above = row << 10;
+    std::vector<int> row_heights = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
     for(int i = 0; i < 19; i++) {
-        bit_board check = ~((row & board) << 10) & (above & board);
+        bit_board check = ~((row & node.board) << 10) & (above & node.board);
         // We shouldn't hit this check very often
         if(check) {
             for(int j = 0; j < 10; j++) {
-                if(((bit_board)1 << j) & check) {
-                    score -= 20;
+                // Check is the combination of two rows, shifted up one row
+                if(((bit_board)1 << (j + (i+1)*10)) & check) {
+                    for(int k = i+1; k < 19; k++) {
+                        // Each block on top of a hole is counted
+                        if((bit_board)1 << (j + (k*10)) & node.board) {
+                            score -= 20;
+                        }
+                    }
                 }
             }
         }
+        bit_board height_check = row & node.board;
+        if(height_check) {
+            for(int j = 0; j < 10; j++) {
+                if(1<<(j + i*10) & height_check) {
+                    row_heights[j] = i;
+                }
+            }
+        }
+        row <<= 10;
+        above <<= 10;
     }
+
+    int max_diff = 0;
+    // Reduce score for jagged boards
+    for(int i = 0; i < 9; i++) {
+        int dist = std::abs(row_heights[i]-row_heights[i+1]);
+        score -= dist*dist;
+    }
+
+    row_heights.insert(row_heights.begin(), 20);
+    row_heights.push_back(20);
+    int well = -1;
+    int well_sides = 0;
+    bool true_well_found = false;
+    // Find well
+    for(int i = 1; i < 11; i++) {
+        if(row_heights[i] > row_heights[i+1] || row_heights[i] > row_heights[i-1]) {
+            continue;
+        }
+        int dist1 = std::abs(row_heights[i]-row_heights[i+1]);
+        int dist2 = std::abs(row_heights[i-1]-row_heights[i]);
+        if(dist1 >= 3 && dist2 >= 3) {
+            if(true_well_found) {
+                // Double well
+                score -= 60;
+            }
+            well_sides = dist1 + dist2;
+            true_well_found = true;
+            well = i-1;
+        }
+        if(dist1 + dist2 > well_sides && !true_well_found) {
+            well = i-1;
+            well_sides = dist1 + dist2;
+        }
+    }
+
+    row_heights.erase(row_heights.begin());
+    row_heights.pop_back();
+
+    int add_back = 0;
+    for(int i = well-1; i <= well+1; i++) {
+        if(i < 0 || i >= 10) {
+            continue;
+        }
+        int dist = std::abs(row_heights[i] - row_heights[well]);
+        add_back += dist*dist;
+    }
+    // Don't subtract score for a well
+    score += add_back;
 
     // Back to back loss worth -2 attack
     // This will probably give all initial boards a negative score
-    if(back_to_back_lost) {
+    if(node.back_to_back_lost) {
         score -= 20;
+    }
+
+    // Center of t-piece
+    // If this isn't empty, don't bother doing more work
+    const bit_board center = 0b000 | (0b010 << 10) | (0b000 << 20);
+
+    // T shapes
+    const bit_board t0 = 0b000 | (0b111 << 10) | (0b010 << 20);
+    const bit_board t1 = 0b010 | (0b110 << 10) | (0b010 << 20);
+    const bit_board t2 = 0b010 | (0b111 << 10) | (0b000 << 20);
+    const bit_board t3 = 0b010 | (0b011 << 10) | (0b010 << 20);
+
+    // T-spin corner possibilities
+    const bit_board corner0 = 0b001 | (0b000 << 10) | (0b101 << 20);
+    const bit_board corner1 = 0b100 | (0b000 << 10) | (0b101 << 20);
+    const bit_board corner2 = 0b101 | (0b000 << 10) | (0b001 << 20);
+    const bit_board corner3 = 0b101 | (0b000 << 10) | (0b100 << 20);
+
+    // TODO: Check for the shape of a tpiece for quiescence search
+    if(score >= -100) {
+        bit_board tspin_checker = 0;
+        const int width = 10;
+        const int height = 20;
+        for(int i = 0; i < width-3; i++) {
+            for(int j = 2; j < height-1; j++) {
+                if(((center << (i + j*10) & node.board)) == 0) {
+                    bool hole0 = ((t0 << (i + j*10)) & node.board) == 0;
+                    bool hole1 = ((t1 << (i + j*10)) & node.board) == 0;
+                    bool hole2 = ((t2 << (i + j*10)) & node.board) == 0;
+                    bool hole3 = ((t3 << (i + j*10)) & node.board) == 0;
+                    bool filled_corner0 = ((corner0 << (i + j*10)) & node.board) == corner0 << (i + j*10);
+                    bool filled_corner1 = ((corner1 << (i + j*10)) & node.board) == corner1 << (i + j*10);
+                    bool filled_corner2 = ((corner2 << (i + j*10)) & node.board) == corner2 << (i + j*10);
+                    bool filled_corner3 = ((corner3 << (i + j*10)) & node.board) == corner3 << (i + j*10);
+                    if((hole0 || hole1 || hole2 || hole3) && (filled_corner0 || filled_corner1 || filled_corner2 || filled_corner3)) {
+                        quiescence_node q_node;
+                        q_node.node = node;
+                        q_node.init_state = curr_moves;
+                        quiescence_list.push_back(q_node);
+                    } 
+                }
+            }
+        }
     }
 
     return score;
