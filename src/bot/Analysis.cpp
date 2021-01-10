@@ -2,6 +2,9 @@
 #include <numeric>
 #include <stack>
 
+int pruned = 0;
+int total = 0;
+bool q = false;
 void AnalysisContext::IterativeDeepen(int depth, bit_board board, std::vector<tetris::Tile> minos) {
     mino_sequence = minos;
     for(int d = 1; d <= depth; d++) {
@@ -12,10 +15,14 @@ void AnalysisContext::IterativeDeepen(int depth, bit_board board, std::vector<te
     std::vector<quiescence_node> quiescence_copy = std::move(quiescence_list);
     // Avoid infinite looping from quiescence search adding more quiescence entries
     quiescence_list.clear();
+    std::cout << "Total: " << total << "\n";
+    std::cout << "Pruned: " << pruned << "\n";
+    std::cout << "Quiescence: " << quiescence_copy.size() << "\n";
+    q = true;
     for(quiescence_node& q_node : quiescence_copy) {
         curr_moves = q_node.init_state;
         search_node node = q_node.node;
-        node.depth = 1;
+        node.depth = 2;
         DFS(node);
     }
 }
@@ -147,11 +154,103 @@ int update_board(bit_board& board, move_info& move, bool& back_to_back, int& com
     return sent;
 }
 
+bool is_tspin_shape(const bit_board& board, int x_start, int x_end, int y_start, int y_end, bool require_clearable) {
+    // Center of t-piece
+    // If this isn't empty, don't bother doing more work
+    const bit_board center = 0b000 | (0b010 << 10) | (0b000 << 20);
+
+    // T shapes
+    const bit_board t0 = 0b000 | (0b111 << 10) | (0b010 << 20);
+    const bit_board t1 = 0b010 | (0b110 << 10) | (0b010 << 20);
+    const bit_board t2 = 0b010 | (0b111 << 10) | (0b000 << 20);
+    const bit_board t3 = 0b010 | (0b011 << 10) | (0b010 << 20);
+
+    // T-spin corner possibilities
+    const bit_board corner0 = 0b001 | (0b000 << 10) | (0b101 << 20);
+    const bit_board corner1 = 0b100 | (0b000 << 10) | (0b101 << 20);
+    const bit_board corner2 = 0b101 | (0b000 << 10) | (0b001 << 20);
+    const bit_board corner3 = 0b101 | (0b000 << 10) | (0b100 << 20);
+
+    const bit_board row = 0b1111111111;
+
+    // TODO: Check for the shape of a tpiece for quiescence search
+    bit_board tspin_checker = 0;
+    const int width = 10;
+    const int height = 20;
+    for(int i = std::max(0, x_start); i < std::min(x_end, width-3); i++) {
+        for(int j = std::max(2, y_start); j < std::min(y_end, height-1); j++) {
+            if(((center << (i + j*10) & board)) == 0) {
+                bool hole0 = ((t0 << (i + j*10)) & board) == 0;
+                bool hole1 = ((t1 << (i + j*10)) & board) == 0;
+                bool hole2 = ((t2 << (i + j*10)) & board) == 0;
+                bool hole3 = ((t3 << (i + j*10)) & board) == 0;
+                bool filled_corner0 = ((corner0 << (i + j*10)) & board) == corner0 << (i + j*10);
+                bool filled_corner1 = ((corner1 << (i + j*10)) & board) == corner1 << (i + j*10);
+                bool filled_corner2 = ((corner2 << (i + j*10)) & board) == corner2 << (i + j*10);
+                bool filled_corner3 = ((corner3 << (i + j*10)) & board) == corner3 << (i + j*10);
+                if((hole0 || hole1 || hole2 || hole3) && (filled_corner0 || filled_corner1 || filled_corner2 || filled_corner3)) {
+                    if(require_clearable) {
+                        bit_board first_row = board & (row << (j)*10); 
+                        bit_board second_row = board & (row << (j+1)*10); 
+                        int cnt = 0;
+                        for(int k = 0; k < width; k++) {
+                            if(first_row & ((bit_board)1 << ((j)*10 + k)))
+                                cnt++;
+                        }
+                        if(cnt <= 5)
+                            continue;
+                        std::cout << "Count1: " << cnt << "\n";
+                        cnt = 0;
+                        for(int k = 0; k < width; k++) {
+                            if(second_row & ((bit_board)1 << ((j+1)*10 + k)))
+                                cnt++;
+                        }
+                        if(cnt <= 3)
+                            continue;
+                        std::cout << "Count2: " << cnt << "\n";
+                    }
+                    return true;
+                } 
+            }
+        }
+    }
+    return false;
+}
+
 bool AnalysisContext::Prune(search_node& node) {
+    bit_board row = 0b1111111111;
+    bit_board above = row << 10;
+    for(int i = 0; i < 19; i++) {
+        bit_board check = ~((row & node.board) << 10) & (above & node.board);
+        if(check) {
+            for(int j = 0; j < 10; j++) {
+                // Check is the combination of two rows, shifted up one row
+                if(((bit_board)1 << (j + (i+1)*10)) & check) {
+                    bool tspin = false;
+                    // block to left is filled
+                    if(j >= 1 && (bit_board)1 << ((j-1) + i*10) & node.board) {
+                        tspin = tspin | is_tspin_shape(node.board, j, j+3, i-1, i+2, false);
+                    }
+                    // block to right is filled
+                    if(j <= 8 && (bit_board)1 << ((j+1) + i*10) & node.board) {
+                        tspin = tspin | is_tspin_shape(node.board, j-2, j+1, i-1, i+2, false);
+                    }
+                    bool donation = is_tspin_shape(node.board, 0, 10, i, i+4, false);
+                    if(!tspin && !donation) {
+                        pruned++;
+                        return true;
+                    }
+                }
+            }
+        }
+        row <<= 10;
+        above <<= 10;
+    }
     return false;
 }
 
 bool AnalysisContext::DFS(search_node node) {
+    total++;
     // Add some metadata to the transposition matrix entry
     // Top 56 bits are 0 anyway so we can add whatever we want here
     bit_board transposition = node.board 
@@ -166,7 +265,7 @@ bool AnalysisContext::DFS(search_node node) {
     if(Prune(node)) {
         return false;
     }
-    if(node.depth == 0 || node.curr_idx > mino_sequence.size()) {
+    if(node.depth == 0 || node.curr_idx >= mino_sequence.size()) {
         int score = Evaluate(node);
         if(score > best_score) {
             // TODO: Check board is actually reachable
@@ -319,32 +418,29 @@ int AnalysisContext::Evaluate(const search_node& node) {
     const bit_board corner1 = 0b100 | (0b000 << 10) | (0b101 << 20);
     const bit_board corner2 = 0b101 | (0b000 << 10) | (0b001 << 20);
     const bit_board corner3 = 0b101 | (0b000 << 10) | (0b100 << 20);
-
+    
+    if(!q) {
     // TODO: Check for the shape of a tpiece for quiescence search
-    if(score >= -100) {
-        bit_board tspin_checker = 0;
-        const int width = 10;
-        const int height = 20;
-        for(int i = 0; i < width-3; i++) {
-            for(int j = 2; j < height-1; j++) {
-                if(((center << (i + j*10) & node.board)) == 0) {
-                    bool hole0 = ((t0 << (i + j*10)) & node.board) == 0;
-                    bool hole1 = ((t1 << (i + j*10)) & node.board) == 0;
-                    bool hole2 = ((t2 << (i + j*10)) & node.board) == 0;
-                    bool hole3 = ((t3 << (i + j*10)) & node.board) == 0;
-                    bool filled_corner0 = ((corner0 << (i + j*10)) & node.board) == corner0 << (i + j*10);
-                    bool filled_corner1 = ((corner1 << (i + j*10)) & node.board) == corner1 << (i + j*10);
-                    bool filled_corner2 = ((corner2 << (i + j*10)) & node.board) == corner2 << (i + j*10);
-                    bool filled_corner3 = ((corner3 << (i + j*10)) & node.board) == corner3 << (i + j*10);
-                    if((hole0 || hole1 || hole2 || hole3) && (filled_corner0 || filled_corner1 || filled_corner2 || filled_corner3)) {
-                        quiescence_node q_node;
-                        q_node.node = node;
-                        q_node.init_state = curr_moves;
-                        quiescence_list.push_back(q_node);
-                    } 
+    if(is_tspin_shape(node.board, 0, 11, 0, 21, true)) {
+        std::cout << "Quiescence\n";
+        std::cout << node.board << "\n";
+        for(int i = 19; i >= 0; i--) {
+            for(int j = 0; j < 10; j++) {
+                if(node.board & ((bit_board)1 << (i*10 + j))) {
+                    std::cout << "X";
+                }
+                else {
+                    std::cout << "-";
                 }
             }
+            std::cout << "\n";
         }
+        std::cout << "\n";
+        quiescence_node q_node;
+        q_node.node = node;
+        q_node.init_state = curr_moves;
+        quiescence_list.push_back(q_node);
+    }
     }
 
     return score;
