@@ -40,6 +40,7 @@ struct AnalysisContext {
     std::vector<move_info> best_moves;
     std::vector<move_info> curr_moves;
     int best_score = INT_MIN;
+    bool quiescence = false;
 
     // Use iterative deepening to keep memory usage low
     // Iterative deepening calls DFS with a limited depth

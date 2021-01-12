@@ -4,26 +4,30 @@
 
 int pruned = 0;
 int total = 0;
-bool q = false;
 void AnalysisContext::IterativeDeepen(int depth, bit_board board, std::vector<tetris::Tile> minos) {
     mino_sequence = minos;
     for(int d = 1; d <= depth; d++) {
+        if(d == depth) {
+            quiescence = true;
+        }
         search_node init = {board, d, 0, 0, false, false, 0};
         DFS(init);
         transposition_matrix.clear();
     }
+    quiescence = false;
     std::vector<quiescence_node> quiescence_copy = std::move(quiescence_list);
     // Avoid infinite looping from quiescence search adding more quiescence entries
     quiescence_list.clear();
     std::cout << "Total: " << total << "\n";
     std::cout << "Pruned: " << pruned << "\n";
     std::cout << "Quiescence: " << quiescence_copy.size() << "\n";
-    q = true;
+    int x = 0;
     for(quiescence_node& q_node : quiescence_copy) {
         curr_moves = q_node.init_state;
         search_node node = q_node.node;
         node.depth = 2;
         DFS(node);
+        x++;
     }
 }
 
@@ -194,19 +198,23 @@ bool is_tspin_shape(const bit_board& board, int x_start, int x_end, int y_start,
                         bit_board second_row = board & (row << (j+1)*10); 
                         int cnt = 0;
                         for(int k = 0; k < width; k++) {
-                            if(first_row & ((bit_board)1 << ((j)*10 + k)))
+                            if(first_row & ((bit_board)1 << ((j)*10 + k))) {
                                 cnt++;
+                            }
                         }
-                        if(cnt <= 5)
+                        if(cnt <= 5) {
                             continue;
+                        }
                         std::cout << "Count1: " << cnt << "\n";
                         cnt = 0;
                         for(int k = 0; k < width; k++) {
-                            if(second_row & ((bit_board)1 << ((j+1)*10 + k)))
-                                cnt++;
+                            if(second_row & ((bit_board)1 << ((j+1)*10 + k))) {
+                                cnt++;    
+                            }
                         }
-                        if(cnt <= 3)
+                        if(cnt <= 3) {
                             continue;
+                        }
                         std::cout << "Count2: " << cnt << "\n";
                     }
                     return true;
@@ -250,14 +258,14 @@ bool AnalysisContext::Prune(search_node& node) {
 }
 
 bool AnalysisContext::DFS(search_node node) {
-    total++;
     // Add some metadata to the transposition matrix entry
     // Top 56 bits are 0 anyway so we can add whatever we want here
     bit_board transposition = node.board 
         | ((bit_board)(node.attack&0xff) << 248) 
         | ((bit_board)(node.curr_idx&0xff) << 240) 
         | ((bit_board)(node.back_to_back&0xff) << 232)
-        | ((bit_board)(node.combo&0xff) << 224);
+        | ((bit_board)(node.combo&0xff) << 224)
+        | ((bit_board)(node.depth&0xff) << 216);
     if(transposition_matrix.count(transposition) != 0) {
         return false;
     }
@@ -419,28 +427,14 @@ int AnalysisContext::Evaluate(const search_node& node) {
     const bit_board corner2 = 0b101 | (0b000 << 10) | (0b001 << 20);
     const bit_board corner3 = 0b101 | (0b000 << 10) | (0b100 << 20);
     
-    if(!q) {
-    // TODO: Check for the shape of a tpiece for quiescence search
-    if(is_tspin_shape(node.board, 0, 11, 0, 21, true)) {
-        std::cout << "Quiescence\n";
-        std::cout << node.board << "\n";
-        for(int i = 19; i >= 0; i--) {
-            for(int j = 0; j < 10; j++) {
-                if(node.board & ((bit_board)1 << (i*10 + j))) {
-                    std::cout << "X";
-                }
-                else {
-                    std::cout << "-";
-                }
-            }
-            std::cout << "\n";
+    if(quiescence) {
+        // TODO: Check for the shape of a tpiece for quiescence search
+        if(is_tspin_shape(node.board, 0, 11, 0, 21, true)) {
+            quiescence_node q_node;
+            q_node.node = node;
+            q_node.init_state = curr_moves;
+            quiescence_list.push_back(q_node);
         }
-        std::cout << "\n";
-        quiescence_node q_node;
-        q_node.node = node;
-        q_node.init_state = curr_moves;
-        quiescence_list.push_back(q_node);
-    }
     }
 
     return score;
