@@ -10,7 +10,7 @@ void AnalysisContext::IterativeDeepen(int depth, bit_board board, std::vector<te
         if(d == depth) {
             quiescence = true;
         }
-        search_node init = {board, d, 0, 0, false, false, 0};
+        search_node init = {board, d, 0, 0, false, false, false, 0};
         DFS(init);
         transposition_matrix.clear();
     }
@@ -82,8 +82,15 @@ int update_board(bit_board& board, move_info& move, bool& back_to_back, int& com
 
         // Move the board mask over the T piece
         // Y coordinate -2 since pieces are positioned by top left corner
-        tspin_mask <<= (move.x + 10*(move.y-2));
-        tspin_mini_mask <<= (move.x + 10*(move.y-2));
+        if(move.x + 10*(move.y-2) >= 0) {
+            tspin_mask <<= (move.x + 10*(move.y-2));
+            tspin_mini_mask <<= (move.x + 10*(move.y-2));
+        }
+        // Deal with negative shift
+        else {
+            tspin_mask >>= -(move.x + 10*(move.y-2));
+            tspin_mini_mask >>= -(move.x + 10*(move.y-2));
+        }
 
         // If we're at the edge of the board there are no blocks to check against so we set true
         // If we're not, we check against the mask
@@ -111,6 +118,7 @@ int update_board(bit_board& board, move_info& move, bool& back_to_back, int& com
 
     int sent = 0;
     if(cnt != 0) {
+        combo++;
         switch(cnt) {
             case 1:
                 sent = 0;
@@ -153,6 +161,9 @@ int update_board(bit_board& board, move_info& move, bool& back_to_back, int& com
         if(board == 0) {
             sent += 10;
         }
+    }
+    else {
+        combo = 0;
     }
 
     return sent;
@@ -202,10 +213,10 @@ bool is_tspin_shape(const bit_board& board, int x_start, int x_end, int y_start,
                                 cnt++;
                             }
                         }
-                        if(cnt <= 5) {
+                        if(cnt <= 7) {
                             continue;
                         }
-                        std::cout << "Count1: " << cnt << "\n";
+                        //std::cout << "Count1: " << cnt << "\n";
                         cnt = 0;
                         for(int k = 0; k < width; k++) {
                             if(second_row & ((bit_board)1 << ((j+1)*10 + k))) {
@@ -215,7 +226,7 @@ bool is_tspin_shape(const bit_board& board, int x_start, int x_end, int y_start,
                         if(cnt <= 3) {
                             continue;
                         }
-                        std::cout << "Count2: " << cnt << "\n";
+                        //std::cout << "Count2: " << cnt << "\n";
                     }
                     return true;
                 } 
@@ -270,7 +281,7 @@ bool AnalysisContext::DFS(search_node node) {
         return false;
     }
     transposition_matrix.insert(transposition);
-    if(Prune(node)) {
+    if(Prune(node) && node.prunable && best_score > INT_MIN) {
         return false;
     }
     if(node.depth == 0 || node.curr_idx >= mino_sequence.size()) {
@@ -278,6 +289,21 @@ bool AnalysisContext::DFS(search_node node) {
         if(score > best_score) {
             // TODO: Check board is actually reachable
 
+            std::cout << node.board << "\n";
+            best_score = score;
+            best_moves = curr_moves;
+            for(int i = 19; i >= 0; i--) {
+                for(int j = 0; j < 10; j++) {
+                    if(node.board & ((bit_board)1 << (i*10 + j))) {
+                        std::cout << "X";
+                    }
+                    else {
+                        std::cout << "-";
+                    }
+                }
+                std::cout << "\n";
+            }
+            std::cout << "\n";
             // Clear the best move sequence since our parent calls will update it
             std::cout << node.board << "\n";
             best_score = score;
@@ -310,8 +336,16 @@ bool AnalysisContext::DFS(search_node node) {
         new_node.back_to_back_lost = node.back_to_back && !new_node.back_to_back;
         new_node.depth = node.depth - 1;
         new_node.curr_idx = node.curr_idx + 1;
+        new_node.prunable = true;
         curr_moves.push_back(next_move);
         DFS(new_node);
+        if(new_node.combo) {
+            new_node.prunable = false;
+            quiescence_node q_node;
+            q_node.node = new_node;
+            q_node.init_state = curr_moves;
+            quiescence_list.push_back(q_node);
+        }
         curr_moves.pop_back();
     }
     return found_new_best;
@@ -432,6 +466,7 @@ int AnalysisContext::Evaluate(const search_node& node) {
         if(is_tspin_shape(node.board, 0, 11, 0, 21, true)) {
             quiescence_node q_node;
             q_node.node = node;
+            q_node.node.prunable = false;
             q_node.init_state = curr_moves;
             quiescence_list.push_back(q_node);
         }

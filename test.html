@@ -1,0 +1,18 @@
+<script src="./build-wasm/bot-wasm.js"></script>
+<script>
+  Module.onRuntimeInitialized = async _ => {
+    const api = {
+      analyze: Module.cwrap('AnalyzeFumen', null, ['string', 'string', 'number', 'number']),
+      allocate: Module.cwrap('AllocateMinoList', 'number', ['number']),
+      free: Module.cwrap('FreeMinoList', null, ['number']),
+      result_size: Module.cwrap('OutputSize', 'number', ['number']),
+    };
+    const depth = 4;
+    const p = api.allocate(depth);
+    const size = api.result_size(depth);
+    console.log(api.analyze("v115@vhGyOJDkBmfBnrBtqBEhBAAA", "ITSZ", depth, p));
+    var result = new Int8Array(Module.HEAP8.buffer, p, size)
+    console.log(result);
+    api.free(p);
+  };
+</script>

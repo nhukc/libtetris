@@ -21,6 +21,31 @@ int ReadInt(std::string str, int idx, int n) {
 }
 
 // Convert the numerical representation of a tile to libtetris enum
+int ToInt(tetris::Tile x) {
+    assert(x >= 0 && x <= 8);
+    switch(x) {
+        case tetris::Tile::Empty:
+            return 0;
+        case tetris::Tile::I:
+            return 1;
+        case tetris::Tile::L:
+            return 2;
+        case tetris::Tile::O:
+            return 3;
+        case tetris::Tile::Z:
+            return 4;
+        case tetris::Tile::T:
+            return 5;
+        case tetris::Tile::J:
+            return 6;
+        case tetris::Tile::S:
+            return 7;
+        case tetris::Tile::X:
+            return 8;
+    }
+}
+
+// Convert the numerical representation of a tile to libtetris enum
 tetris::Tile ToTile(int x) {
     assert(x >= 0 && x <= 8);
     switch(x) {
@@ -60,10 +85,10 @@ std::unique_ptr<tetris::Mino> ToMino(int x, int y, int type, int orientation) {
             return std::make_unique<tetris::IMino>(x, y, orientation);
         case 2:
             if(orientation == 1) {
-                x -= 1;
+                orientation = 3;
             }
-            if(orientation == 3) {
-                x += 1;
+            else if(orientation == 3) {
+                orientation = 1;
             }
             return std::make_unique<tetris::LMino>(x, y, orientation);
         case 3:
@@ -85,10 +110,10 @@ std::unique_ptr<tetris::Mino> ToMino(int x, int y, int type, int orientation) {
             return std::make_unique<tetris::TMino>(x, y, orientation);
         case 6:
             if(orientation == 1) {
-                x -= 1;
+                orientation = 3;
             }
-            if(orientation == 3) {
-                x += 1;
+            else if(orientation == 3) {
+                orientation = 1;
             }
             return std::make_unique<tetris::JMino>(x, y, orientation);
         case 7:

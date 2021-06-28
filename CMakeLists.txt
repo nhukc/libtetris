@@ -23,7 +23,11 @@ endif()
 
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
-add_executable(test1 main.cpp)
 add_executable(test2 main2.cpp)
-target_link_libraries(test1 libtetris bot)
+if (EMSCRIPTEN)
+    add_executable(bot-wasm bot-wasm.cpp)
+    set_target_properties(bot-wasm PROPERTIES COMPILE_FLAGS "-s USE_BOOST_HEADERS=1" LINK_FLAGS "-s USE_BOOST_HEADERS=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"cwrap\"]'")
+    set_target_properties(test2 PROPERTIES COMPILE_FLAGS "-s USE_BOOST_HEADERS=1" LINK_FLAGS "-s USE_BOOST_HEADERS=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"cwrap\"]'")
+    target_link_libraries(bot-wasm libtetris bot)
+endif()
 target_link_libraries(test2 libtetris bot)

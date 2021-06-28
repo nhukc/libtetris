@@ -2,6 +2,7 @@
 #define TETRIS_HPP
 
 #include <assert.h>
+#include <array>
 #include <bitset>
 #include <map>
 #include <string>

@@ -16,6 +16,7 @@ struct search_node {
     bool back_to_back;
     // If this move made us lose a back to back
     bool back_to_back_lost;
+    bool prunable;
     int combo;
 };
 

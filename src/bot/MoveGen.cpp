@@ -1,6 +1,5 @@
 #include "bot/MoveGen.hpp"
 #include <iostream>
-#include <bits/stdc++.h>
 
 // Empty bitboard with a piece in the bottom left corner
 bit_board piece_boards[7][4] = {

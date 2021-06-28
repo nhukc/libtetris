@@ -12,4 +12,7 @@ class Fumen {
 std::string encode(Fumen f);
 Fumen decode(std::string);
 
+int ToInt(tetris::Tile x);
+tetris::Tile ToTile(int x);
+
 #endif

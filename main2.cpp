@@ -3,6 +3,17 @@
 #include "util/Fumen.hpp"
 #include <iostream>
 
+#ifdef EMSCRIPTEN
+#include "emscripten.h"
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+int versionabc() {
+    return 5;
+}
+}
+#endif
+
 int main() {
     tetris::Board board(10, 20);
     AnalysisContext c;
@@ -12,6 +23,7 @@ int main() {
     std::cin >> fumen_input;
     Fumen fumen = decode(fumen_input);
     tetris::Board fumen_board = fumen.pages[fumen.pages.size() - 1];
+    std::cout << fumen_board << "\n";
     
     std::cout << "Enter piece sequence: ";
     std::string piece_sequence;
